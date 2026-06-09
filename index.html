@@ -79,32 +79,6 @@ header{
 .lang-btn button.active{background:var(--blue2);color:#fff}
 .lang-btn button:hover:not(.active){background:rgba(0,180,255,.1);color:var(--blue)}
 
-/* ── API Key Bar ── */
-.api-bar{
-  background:linear-gradient(135deg,rgba(13,26,61,.8),rgba(8,15,31,.8));
-  border-bottom:1px solid var(--border2);padding:12px 24px;
-  display:flex;align-items:center;gap:12px;flex-wrap:wrap
-}
-.api-bar label{font-size:12px;color:var(--text2);font-weight:500;white-space:nowrap}
-.api-input-wrap{flex:1;min-width:200px;position:relative}
-.api-input{
-  width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);
-  border-radius:8px;padding:8px 36px 8px 12px;color:var(--text);
-  font-size:13px;font-family:monospace;transition:all .2s;outline:none
-}
-.api-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,180,255,.1)}
-.api-toggle{
-  position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;
-  padding:4px;transition:color .2s
-}
-.api-toggle:hover{color:var(--blue)}
-.api-status{
-  display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500
-}
-.api-dot{width:8px;height:8px;border-radius:50%;animation:pulse 2s infinite}
-.api-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
-.api-dot.no{background:var(--text3)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 
 /* ── Main ── */
@@ -360,18 +334,6 @@ main{flex:1;padding:24px;max-width:1400px;margin:0 auto;width:100%;display:flex;
   </div>
 </header>
 
-<!-- API Key Bar -->
-<div class="api-bar">
-  <label data-i18n="api_key">API 密钥</label>
-  <div class="api-input-wrap">
-    <input type="password" class="api-input" id="api-key-input" placeholder="sk-ant-api03-..." autocomplete="off">
-    <button class="api-toggle" onclick="toggleApiVis()" id="api-vis-btn">👁</button>
-  </div>
-  <div class="api-status">
-    <div class="api-dot" id="api-dot"></div>
-    <span id="api-status-text" data-i18n="api_no_key">未配置</span>
-  </div>
-</div>
 
 <!-- Main -->
 <main>
@@ -586,16 +548,6 @@ let toastTimer = null;
 // Init
 // ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  const savedKey = localStorage.getItem('bsai-key') || '';
-  if (savedKey) {
-    document.getElementById('api-key-input').value = savedKey;
-    updateApiStatus(true);
-  }
-  document.getElementById('api-key-input').addEventListener('input', e => {
-    const v = e.target.value.trim();
-    localStorage.setItem('bsai-key', v);
-    updateApiStatus(v.length > 10);
-  });
   setupDragDrop();
   renderHistory();
 });
@@ -617,19 +569,6 @@ function setLang(lang) {
 }
 function t(key) { return LANGS[currentLang][key] || LANGS.en[key] || key; }
 
-// ─────────────────────────────────────────────
-// API Status
-// ─────────────────────────────────────────────
-function updateApiStatus(ok) {
-  const dot = document.getElementById('api-dot');
-  const txt = document.getElementById('api-status-text');
-  dot.className = 'api-dot ' + (ok ? 'ok' : 'no');
-  txt.textContent = t(ok ? 'api_ready' : 'api_no_key');
-}
-function toggleApiVis() {
-  const inp = document.getElementById('api-key-input');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-}
 
 // ─────────────────────────────────────────────
 // Drag & Drop
@@ -693,70 +632,25 @@ function showImagePreview(dataUrl, name, size) {
 // Analysis
 // ─────────────────────────────────────────────
 async function startAnalysis() {
-  const key = document.getElementById('api-key-input').value.trim();
-  if (!key) { showToast(t('err_no_key'), 'error'); return; }
   if (!currentImage) { showToast(t('err_no_img'), 'error'); return; }
 
   setAnalyzingState(true);
   showLoadingSkeleton();
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/analyze', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 800,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: currentMime, data: currentImage }
-            },
-            {
-              type: 'text',
-              text: `You are a professional medical imaging AI. Carefully analyze this bone X-ray image.
-Return ONLY valid JSON, no markdown, no explanation:
-{
-  "detected": true or false,
-  "type": "avulsion|comminuted|dislocation|greenstick|hairline|impacted|longitudinal|oblique|pathological|spiral|unclear",
-  "confidence": 0-100,
-  "severity": "none|mild|moderate|severe",
-  "location": "precise anatomical location in English",
-  "location_zh": "精确解剖位置（中文）",
-  "observations": ["finding 1", "finding 2", "finding 3"],
-  "observations_zh": ["发现1", "发现2", "发现3"],
-  "quality": "poor|fair|good|excellent",
-  "bboxes": [
-    {"label": "骨折检测", "label_en": "Fracture", "confidence": 0-100, "color": "blue", "x": 0.0-1.0, "y": 0.0-1.0, "w": 0.0-1.0, "h": 0.0-1.0},
-    {"label": "断裂特征", "label_en": "Feature", "confidence": 0-100, "color": "red", "x": 0.0-1.0, "y": 0.0-1.0, "w": 0.0-1.0, "h": 0.0-1.0}
-  ]
-}
-For bboxes: x,y is top-left corner, w,h is width/height, all as fraction of image size (0.0 to 1.0). Include 1-3 boxes highlighting fracture regions. If no fracture detected, return empty array.`
-            }
-          ]
-        }]
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageData: currentImage, mimeType: currentMime })
     });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `HTTP ${res.status}`);
+      throw new Error(errData.error || `HTTP ${res.status}`);
     }
 
-    const data = await res.json();
-    let raw = data.content[0].text.trim();
-    raw = raw.replace(/^```json?\s*/,'').replace(/\s*```$/,'').trim();
-
-    let result;
-    try { result = JSON.parse(raw); }
-    catch { throw new Error(t('err_parse')); }
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
 
     window._lastResult = result;
     renderResult(result);
